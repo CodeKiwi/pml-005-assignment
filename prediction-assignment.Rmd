@@ -1,0 +1,66 @@
+---
+title: "PML-005 prediction assignment"
+author: "Josh Bondy"
+date: "8 September 2014"
+output: html_document
+---
+
+This is my prediction assignment for <https://class.coursera.org/predmachlearn-005>.
+
+####Import caret package
+For this project we will use the **caret** package, this package smoothes over some of the R quirks when it comes to applying machine learning techniques.
+
+```{r}
+library(caret);
+library(kernlab)
+```
+
+####Load data
+```{r}
+# For local
+setwd("/Documents/Projects/ck-sandbox.data/src/pml-005")
+input <- read.csv("pml-training.csv",sep=",")
+#testing <- read.csv("pml-testing.csv")
+
+# For submission
+#training <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+#testing <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+```
+
+####Data splitting
+Split into training and test data
+```{r}
+inTrain <- createDataPartition(y=input$classe, p=0.7, list=FALSE)
+training <- input[inTrain,]
+testing <- input[-inTrain,]
+dim(training); dim(testing)
+summary(training)
+featurePlot(x=training[,c("roll_dumbbell", "pitch_dumbbell","yaw_dumbbell")],y=training$classe, plot="pair")
+```
+
+####Fit a model
+```{r}
+training$classe
+set.seed(32343)
+modelFit <- train(classe ~.,data=training, method="logreg")
+warnings()
+modelFit
+```
+
+####Final model
+
+####Predict
+
+####Confusion matrix
+
+
+```{r}
+summary(cars)
+```
+
+You can also embed plots, for example:
+
+```{r, echo=FALSE}
+plot(cars)
+```
+
