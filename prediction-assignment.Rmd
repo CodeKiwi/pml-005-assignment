@@ -7,28 +7,42 @@ output: html_document
 
 This is my prediction assignment for <https://class.coursera.org/predmachlearn-005>.
 
-####Import caret package
+###Import caret package
 For this project we will use the **caret** package, this package smoothes over some of the R quirks when it comes to applying machine learning techniques.
 
 ```{r}
-library(caret);
+library(caret)
 library(kernlab)
 ```
 
 ####Load data
 ```{r}
 # For local
-setwd("/Documents/Projects/ck-sandbox.data/src/pml-005")
-input <- read.csv("pml-training.csv",sep=",")
-#testing <- read.csv("pml-testing.csv")
+setwd("~/Documents/Projects/pml-005-assignment")
+input <- read.csv("pml-training.csv")
+#input <- read.table('pml-training.csv', header=T, sep=",") 
+str(input)
+
+prediction_input <- read.csv("pml-testing.csv",sep=",")
 
 # For submission
-#training <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
-#testing <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+#input <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+#prediction_input <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
 ```
 
-####Data splitting
-Split into training and test data
+####Clean data
+Remove features with low variance and significant NA values
+```{r}
+input <- input[complete.cases(input),]
+nsv <- nearZeroVar(input,saveMetrics=FALSE)
+nsv
+input <- input[-nsv]
+str(input)
+```
+
+####Create training and test sets
+Split into training and test data, test data to be split into multiple cross validation sets using Kfolds
+
 ```{r}
 inTrain <- createDataPartition(y=input$classe, p=0.7, list=FALSE)
 training <- input[inTrain,]
@@ -42,14 +56,20 @@ featurePlot(x=training[,c("roll_dumbbell", "pitch_dumbbell","yaw_dumbbell")],y=t
 ```{r}
 training$classe
 set.seed(32343)
-modelFit <- train(classe ~.,data=training, method="logreg")
+#modelFit <- train(classe~ .,data=training,method="rf",prox=TRUE)
+modelFit <- randomForest(classe~ ., data=training, ntree=100, mtry=10)
+
+#modelFit <- train(classe ~.,data=training, method="logreg")
 warnings()
 modelFit
 ```
 
 ####Final model
 
-####Predict
+####Predict test data
+```{r}
+#testing <- read.csv("pml-testing.csv")
+```
 
 ####Confusion matrix
 
