@@ -13,6 +13,7 @@ For this project we will use the **caret** package, this package smoothes over s
 ```{r}
 library(caret)
 library(kernlab)
+library(randomForest)
 ```
 
 ####Load data
@@ -20,9 +21,6 @@ library(kernlab)
 # For local
 setwd("~/Documents/Projects/pml-005-assignment")
 input <- read.csv("pml-training.csv")
-#input <- read.table('pml-training.csv', header=T, sep=",") 
-str(input)
-
 prediction_input <- read.csv("pml-testing.csv",sep=",")
 
 # For submission
@@ -33,11 +31,21 @@ prediction_input <- read.csv("pml-testing.csv",sep=",")
 ####Clean data
 Remove features with low variance and significant NA values
 ```{r}
-input <- input[complete.cases(input),]
+
+# Replace Divide by zero errors and empty cells with NA
+input[input == "#DIV/0!" | input == ""] <- NA
+
+# Remove features with greater than 10k NA's 
+manyNa <- c()
+for (i in 1:ncol(input)){
+ if (sum(is.na(input[i])) > 10000){ manyNa <- c(manyNa, i)}
+}
+input <- input[-manyNa]
+
+# Remove near zero variance metrics
 nsv <- nearZeroVar(input,saveMetrics=FALSE)
-nsv
 input <- input[-nsv]
-str(input)
+
 ```
 
 ####Create training and test sets
@@ -48,39 +56,25 @@ inTrain <- createDataPartition(y=input$classe, p=0.7, list=FALSE)
 training <- input[inTrain,]
 testing <- input[-inTrain,]
 dim(training); dim(testing)
-summary(training)
-featurePlot(x=training[,c("roll_dumbbell", "pitch_dumbbell","yaw_dumbbell")],y=training$classe, plot="pair")
+
+#featurePlot(x=training[,c("roll_dumbbell", "pitch_dumbbell","yaw_dumbbell")],y=training$classe, plot="pair")
 ```
 
 ####Fit a model
 ```{r}
-training$classe
-set.seed(32343)
-#modelFit <- train(classe~ .,data=training,method="rf",prox=TRUE)
-modelFit <- randomForest(classe~ ., data=training, ntree=100, mtry=10)
-
-#modelFit <- train(classe ~.,data=training, method="logreg")
-warnings()
+set.seed(3243)
+modelFit <- randomForest(classe~., data=training, ntree=100, mtry=10)
 modelFit
 ```
 
-####Final model
+####Test model
+```{r}
+pred <- predict(modelFit,testing); 
+testing$correct <- pred==testing$classe
+
+table(pred,testing$classe)
+
+```
 
 ####Predict test data
-```{r}
-#testing <- read.csv("pml-testing.csv")
-```
-
-####Confusion matrix
-
-
-```{r}
-summary(cars)
-```
-
-You can also embed plots, for example:
-
-```{r, echo=FALSE}
-plot(cars)
-```
 
