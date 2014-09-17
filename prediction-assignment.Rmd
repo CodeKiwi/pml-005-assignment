@@ -21,35 +21,15 @@ library(randomForest)
 # For local
 setwd("~/Documents/Projects/pml-005-assignment")
 input <- read.csv("pml-training.csv")
-prediction_input <- read.csv("pml-testing.csv",sep=",")
+prediction_input <- read.csv("pml-testing.csv")
 
 # For submission
 #input <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
 #prediction_input <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
 ```
 
-####Clean data
-Remove features with low variance and significant NA values
-```{r}
-
-# Replace Divide by zero errors and empty cells with NA
-input[input == "#DIV/0!" | input == ""] <- NA
-
-# Remove features with greater than 10k NA's 
-manyNa <- c()
-for (i in 1:ncol(input)){
- if (sum(is.na(input[i])) > 10000){ manyNa <- c(manyNa, i)}
-}
-input <- input[-manyNa]
-
-# Remove near zero variance metrics
-nsv <- nearZeroVar(input,saveMetrics=FALSE)
-input <- input[-nsv]
-
-```
-
 ####Create training and test sets
-Split into training and test data, test data to be split into multiple cross validation sets using Kfolds
+Split into training and test data
 
 ```{r}
 inTrain <- createDataPartition(y=input$classe, p=0.7, list=FALSE)
@@ -57,12 +37,38 @@ training <- input[inTrain,]
 testing <- input[-inTrain,]
 dim(training); dim(testing)
 
-#featurePlot(x=training[,c("roll_dumbbell", "pitch_dumbbell","yaw_dumbbell")],y=training$classe, plot="pair")
+############# USE CROSS VALIDATION ############
+
+```
+
+####Clean data
+Remove features with low variance and significant NA values
+```{r}
+
+# Remove timeseries columns, these facilitated zero test error but would cause failure to generalize
+training <- training[-c(1,2,3,4,5,6,7)]
+prediction_input <- prediction_input[-c(1,2,3,4,5,6,7)]
+  
+# Replace Divide by zero errors and empty cells with NA
+training[training == "#DIV/0!" | training == ""] <- NA
+
+# Remove features with greater than 10k NA's 
+manyNa <- c()
+for (i in 1:ncol(training)){
+ if (sum(is.na(training[i])) > 10000){ manyNa <- c(manyNa, i)}
+}
+training <- training[-manyNa]
+prediction_input <- prediction_input[-manyNa]
+
+dim(training)
 ```
 
 ####Fit a model
+The model is fit using Random Forests, the randomForests library was used in place of the caret wrapper due to the ability to natively modify the ntree and mtry parameters. 100 trees and 10 features per tree was found to be be the best balance between performance and results.
+
+Given the selected features the OOB error rate is approximately 0.54%, this rate could be greatly reduced by reintroducing the user and time based features however this would reduce the ability for the solution to generalize well. 
 ```{r}
-set.seed(3243)
+set.seed(43)
 modelFit <- randomForest(classe~., data=training, ntree=100, mtry=10)
 modelFit
 ```
@@ -71,10 +77,21 @@ modelFit
 ```{r}
 pred <- predict(modelFit,testing); 
 testing$correct <- pred==testing$classe
-
 table(pred,testing$classe)
 
 ```
 
 ####Predict test data
+```{r}
+answers <- predict(modelFit,prediction_input); 
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(answers)
+```
+
 
