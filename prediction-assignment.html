@@ -10,6 +10,7 @@
 
 <meta name="author" content="Josh Bondy" />
 
+<meta name="date" content="2014-09-20" />
 
 <title>PML-005 prediction assignment</title>
 
@@ -54,14 +55,21 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 <div id="header">
 <h1 class="title">PML-005 prediction assignment</h1>
 <h4 class="author"><em>Josh Bondy</em></h4>
-<h4 class="date"><em>8 September 2014</em></h4>
+<h4 class="date"><em>20 September 2014</em></h4>
 </div>
 
 
 <p>This is my prediction assignment for <a href="https://class.coursera.org/predmachlearn-005">https://class.coursera.org/predmachlearn-005</a>.</p>
-<div id="import-caret-package" class="section level3">
-<h3>Import caret package</h3>
-<p>For this project we will use the <strong>caret</strong> package, this package smoothes over some of the R quirks when it comes to applying machine learning techniques.</p>
+<div id="background-from-assignment" class="section level3">
+<h3>Background (from assignment)</h3>
+<p>Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <a href="http://groupware.les.inf.puc-rio.br/har">http://groupware.les.inf.puc-rio.br/har</a> (see the section on the Weight Lifting Exercise Dataset).</p>
+</div>
+<div id="execuitive-summary" class="section level3">
+<h3>Execuitive summary</h3>
+<p>The goal of this project is to build a prediction model to correctly classify the quiality of excercises peformed and tracked in the Human Activity Recognition project. Data is available in the form of sensor measurements taken whilst performing barbell lifts. Classification is facilitated by labeled data indicating the diffent way the exercise was performed.</p>
+<div id="import-required-packages" class="section level4">
+<h4>Import required packages</h4>
+<p>For this project we will use the <strong>caret</strong> package, this package smoothes over some of the R quirks when it comes to applying machine learning techniques, however the machine learning package selected is the <strong>randomForest</strong> package due to the caret varient iterating too many times.</p>
 <pre class="r"><code>library(caret)</code></pre>
 <pre><code>## Loading required package: lattice
 ## Loading required package: ggplot2</code></pre>
@@ -69,82 +77,140 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 library(randomForest)</code></pre>
 <pre><code>## randomForest 4.6-10
 ## Type rfNews() to see new features/changes/bug fixes.</code></pre>
+</div>
 <div id="load-data" class="section level4">
 <h4>Load data</h4>
 <pre class="r"><code># For local
 setwd(&quot;~/Documents/Projects/pml-005-assignment&quot;)
 input &lt;- read.csv(&quot;pml-training.csv&quot;)
-prediction_input &lt;- read.csv(&quot;pml-testing.csv&quot;,sep=&quot;,&quot;)
+prediction_input &lt;- read.csv(&quot;pml-testing.csv&quot;) 
+
+set.seed(43)
 
 # For submission
 #input &lt;- read.csv(&quot;http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv&quot;)
 #prediction_input &lt;- read.csv(&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv&quot;)</code></pre>
 </div>
+<div id="create-training-and-test-sets" class="section level4">
+<h4>Create training and test sets</h4>
+<p>Split into training, test and cross validation data sets. It was decided not to use K-Fold cross validation as this was decided to be overkill for the assignment. Using an 80% split yeilds 12k test cases with approx 3.5k samples in test and cross validation sets.</p>
+<pre class="r"><code>inTrain &lt;- createDataPartition(y=input$classe, p=0.8, list=FALSE)
+training_input &lt;- input[inTrain,]
+testing &lt;- input[-inTrain,]
+
+inTrain &lt;- createDataPartition(y=training_input$classe, p=0.8, list=FALSE)
+training &lt;- training_input[inTrain,]
+cross_val &lt;- training_input[-inTrain,]
+
+#Check sizes of sets
+dim(training); dim(cross_val); dim(testing)</code></pre>
+<pre><code>## [1] 12562   160</code></pre>
+<pre><code>## [1] 3137  160</code></pre>
+<pre><code>## [1] 3923  160</code></pre>
+</div>
 <div id="clean-data" class="section level4">
 <h4>Clean data</h4>
 <p>Remove features with low variance and significant NA values</p>
-<pre class="r"><code># Replace Divide by zero errors and empty cells with NA
-input[input == &quot;#DIV/0!&quot; | input == &quot;&quot;] &lt;- NA
+<pre class="r"><code># Remove timeseries columns, these facilitated zero test error but would cause failure to generalize
+invalidColumns &lt;- c(1,2,3,4,5,6,7)
+training &lt;- training[-invalidColumns]
+cross_val &lt;- cross_val[-invalidColumns]
+prediction_input &lt;- prediction_input[-invalidColumns]
+  
+# Replace Divide by zero errors and empty cells with NA
+training[training == &quot;#DIV/0!&quot; | training == &quot;&quot;] &lt;- NA
+cross_val[cross_val == &quot;#DIV/0!&quot; | cross_val == &quot;&quot;] &lt;- NA
+prediction_input[prediction_input == &quot;#DIV/0!&quot; | prediction_input == &quot;&quot;] &lt;- NA
 
 # Remove features with greater than 10k NA's 
 manyNa &lt;- c()
-for (i in 1:ncol(input)){
- if (sum(is.na(input[i])) &gt; 10000){ manyNa &lt;- c(manyNa, i)}
+for (i in 1:ncol(training)){
+ if (sum(is.na(training[i])) &gt; 10000){ manyNa &lt;- c(manyNa, i)}
 }
-input &lt;- input[-manyNa]
+training &lt;- training[-manyNa]
+cross_val &lt;- cross_val[-manyNa]
+prediction_input &lt;- prediction_input[-manyNa]
 
-# Remove near zero variance metrics
-nsv &lt;- nearZeroVar(input,saveMetrics=FALSE)
-input &lt;- input[-nsv]</code></pre>
+#Check sizes of sets
+dim(training); dim(cross_val); dim(testing)</code></pre>
+<pre><code>## [1] 12562    53</code></pre>
+<pre><code>## [1] 3137   53</code></pre>
+<pre><code>## [1] 3923  160</code></pre>
 </div>
-<div id="create-training-and-test-sets" class="section level4">
-<h4>Create training and test sets</h4>
-<p>Split into training and test data, test data to be split into multiple cross validation sets using Kfolds</p>
-<pre class="r"><code>inTrain &lt;- createDataPartition(y=input$classe, p=0.7, list=FALSE)
-training &lt;- input[inTrain,]
-testing &lt;- input[-inTrain,]
-dim(training); dim(testing)</code></pre>
-<pre><code>## [1] 13737    59</code></pre>
-<pre><code>## [1] 5885   59</code></pre>
-<pre class="r"><code>#featurePlot(x=training[,c(&quot;roll_dumbbell&quot;, &quot;pitch_dumbbell&quot;,&quot;yaw_dumbbell&quot;)],y=training$classe, plot=&quot;pair&quot;)</code></pre>
+<div id="select-model-parameters" class="section level4">
+<h4>Select model parameters</h4>
+<p>Using the cross validation set train classifiers using a number of different values for ntree and mtry parameters.</p>
+<p>**note* the randomForests library was used in place of the caret wrapper due to the ability to natively modify the ntree and mtry parameters.</p>
+<pre class="r"><code>ntree_vals &lt;- c(10,100,500)
+mtry_vals &lt;- c(5,10,20)
+results &lt;- matrix(nrow=length(ntree_vals), ncol=length(mtry_vals))
+for(i in 1:length(ntree_vals)) {
+  for(n in 1:length(mtry_vals)) {
+    modelFit &lt;- randomForest(classe~., data=training, ntree=ntree_vals[i], mtry=mtry_vals[n])
+    results[i, n] &lt;- mean(predict(modelFit,cross_val) == cross_val$classe)
+  }
+}
+results</code></pre>
+<pre><code>##        [,1]   [,2]   [,3]
+## [1,] 0.9834 0.9882 0.9876
+## [2,] 0.9927 0.9930 0.9930
+## [3,] 0.9927 0.9936 0.9930</code></pre>
 </div>
-<div id="fit-a-model" class="section level4">
-<h4>Fit a model</h4>
-<pre class="r"><code>set.seed(3243)
-modelFit &lt;- randomForest(classe~., data=training, ntree=100, mtry=10)
+<div id="train-models" class="section level4">
+<h4>Train models</h4>
+<p>The model is fit using Random Forests, from the parameter selection performed in the previous step we see that 500 for ntrees and 10 for mtry variables gives the optimal accuracy. However 100 trees and 10 features per tree was found to be be the best balance between performance and accuracy.</p>
+<p>Given the selected features the pridicted OOB error rate is approximately 0.55%.</p>
+<pre class="r"><code>modelFit &lt;- randomForest(classe~., data=training, ntree=500, mtry=10)
 modelFit</code></pre>
 <pre><code>## 
 ## Call:
-##  randomForest(formula = classe ~ ., data = training, ntree = 100,      mtry = 10) 
+##  randomForest(formula = classe ~ ., data = training, ntree = 500,      mtry = 10) 
 ##                Type of random forest: classification
-##                      Number of trees: 100
+##                      Number of trees: 500
 ## No. of variables tried at each split: 10
 ## 
-##         OOB estimate of  error rate: 0%
+##         OOB estimate of  error rate: 0.58%
 ## Confusion matrix:
 ##      A    B    C    D    E class.error
-## A 3906    0    0    0    0           0
-## B    0 2658    0    0    0           0
-## C    0    0 2396    0    0           0
-## D    0    0    0 2252    0           0
-## E    0    0    0    0 2525           0</code></pre>
+## A 3569    2    1    0    0   0.0008399
+## B   14 2409    8    0    0   0.0090498
+## C    0   16 2173    2    0   0.0082154
+## D    0    0   22 2036    1   0.0111705
+## E    0    0    1    6 2302   0.0030316</code></pre>
 </div>
 <div id="test-model" class="section level4">
 <h4>Test model</h4>
+<p>We can now test the model using the test case, this data has not been used through the model and parameter selection steps to ensure we are not overfitting the data.</p>
 <pre class="r"><code>pred &lt;- predict(modelFit,testing); 
 testing$correct &lt;- pred==testing$classe
-
 table(pred,testing$classe)</code></pre>
 <pre><code>##     
 ## pred    A    B    C    D    E
-##    A 1674    0    0    0    0
-##    B    0 1139    0    0    0
-##    C    0    0 1026    0    0
-##    D    0    0    0  964    0
-##    E    0    0    0    0 1082</code></pre>
+##    A 1114    6    0    0    0
+##    B    2  751    6    0    0
+##    C    0    2  678   12    0
+##    D    0    0    0  630    1
+##    E    0    0    0    1  720</code></pre>
+<pre class="r"><code>mean(testing$correct &lt;- pred==testing$classe)</code></pre>
+<pre><code>## [1] 0.9924</code></pre>
+</div>
+<div id="final-result" class="section level4">
+<h4>Final result</h4>
+<p>The prediction accuracy of the final model was &gt; 99.2%. This is a very positive result with an actual OOB error rate of 0.66%, marginally higher than the expected value of 0.55% but well within acceptible margins.</p>
+<p><strong>note</strong> The error rate could be greatly reduced by reintroducing the user and time based features however this would reduce the ability for the solution to generalize well.</p>
 </div>
 <div id="predict-test-data" class="section level4">
 <h4>Predict test data</h4>
+<p>The final requirement of the assignment is to predict on a test set for submission to the Coursera site. This was completed (and passed 100%) with the function below.</p>
+<pre class="r"><code>answers &lt;- predict(modelFit,prediction_input); 
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0(&quot;problem_id_&quot;,i,&quot;.txt&quot;)
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(answers)</code></pre>
 </div>
 </div>
 

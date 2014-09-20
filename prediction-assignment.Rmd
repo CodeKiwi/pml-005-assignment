@@ -1,14 +1,20 @@
 ---
 title: "PML-005 prediction assignment"
 author: "Josh Bondy"
-date: "8 September 2014"
+date: "20 September 2014"
 output: html_document
 ---
 
 This is my prediction assignment for <https://class.coursera.org/predmachlearn-005>.
 
-###Import caret package
-For this project we will use the **caret** package, this package smoothes over some of the R quirks when it comes to applying machine learning techniques.
+###Background (from assignment)
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+###Execuitive summary
+The goal of this project is to build a prediction model to correctly classify the quiality of excercises peformed and tracked in the Human Activity Recognition project. Data is available in the form of sensor measurements taken whilst performing barbell lifts. Classification is facilitated by labeled data indicating the diffent way the exercise was performed.
+
+####Import required packages
+For this project we will use the **caret** package, this package smoothes over some of the R quirks when it comes to applying machine learning techniques, however the machine learning package selected is the **randomForest** package due to the caret varient iterating too many times. 
 
 ```{r}
 library(caret)
@@ -21,7 +27,9 @@ library(randomForest)
 # For local
 setwd("~/Documents/Projects/pml-005-assignment")
 input <- read.csv("pml-training.csv")
-prediction_input <- read.csv("pml-testing.csv")
+prediction_input <- read.csv("pml-testing.csv") 
+
+set.seed(43)
 
 # For submission
 #input <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
@@ -29,16 +37,19 @@ prediction_input <- read.csv("pml-testing.csv")
 ```
 
 ####Create training and test sets
-Split into training and test data
+Split into training, test and cross validation data sets. It was decided not to use K-Fold cross validation as this was decided to be overkill for the assignment. Using an 80% split yeilds 12k test cases with approx 3.5k samples in test and cross validation sets.
 
 ```{r}
-inTrain <- createDataPartition(y=input$classe, p=0.7, list=FALSE)
-training <- input[inTrain,]
+inTrain <- createDataPartition(y=input$classe, p=0.8, list=FALSE)
+training_input <- input[inTrain,]
 testing <- input[-inTrain,]
-dim(training); dim(testing)
 
-############# USE CROSS VALIDATION ############
+inTrain <- createDataPartition(y=training_input$classe, p=0.8, list=FALSE)
+training <- training_input[inTrain,]
+cross_val <- training_input[-inTrain,]
 
+#Check sizes of sets
+dim(training); dim(cross_val); dim(testing)
 ```
 
 ####Clean data
@@ -46,11 +57,15 @@ Remove features with low variance and significant NA values
 ```{r}
 
 # Remove timeseries columns, these facilitated zero test error but would cause failure to generalize
-training <- training[-c(1,2,3,4,5,6,7)]
-prediction_input <- prediction_input[-c(1,2,3,4,5,6,7)]
+invalidColumns <- c(1,2,3,4,5,6,7)
+training <- training[-invalidColumns]
+cross_val <- cross_val[-invalidColumns]
+prediction_input <- prediction_input[-invalidColumns]
   
 # Replace Divide by zero errors and empty cells with NA
 training[training == "#DIV/0!" | training == ""] <- NA
+cross_val[cross_val == "#DIV/0!" | cross_val == ""] <- NA
+prediction_input[prediction_input == "#DIV/0!" | prediction_input == ""] <- NA
 
 # Remove features with greater than 10k NA's 
 manyNa <- c()
@@ -58,30 +73,60 @@ for (i in 1:ncol(training)){
  if (sum(is.na(training[i])) > 10000){ manyNa <- c(manyNa, i)}
 }
 training <- training[-manyNa]
+cross_val <- cross_val[-manyNa]
 prediction_input <- prediction_input[-manyNa]
 
-dim(training)
+#Check sizes of sets
+dim(training); dim(cross_val); dim(testing)
 ```
 
-####Fit a model
-The model is fit using Random Forests, the randomForests library was used in place of the caret wrapper due to the ability to natively modify the ntree and mtry parameters. 100 trees and 10 features per tree was found to be be the best balance between performance and results.
+####Select model parameters
+Using the cross validation set train classifiers using a number of different values for ntree and mtry parameters. 
 
-Given the selected features the OOB error rate is approximately 0.54%, this rate could be greatly reduced by reintroducing the user and time based features however this would reduce the ability for the solution to generalize well. 
+**note* the randomForests library was used in place of the caret wrapper due to the ability to natively modify the ntree and mtry parameters. 
+
 ```{r}
-set.seed(43)
-modelFit <- randomForest(classe~., data=training, ntree=100, mtry=10)
+ntree_vals <- c(10,100,500)
+mtry_vals <- c(5,10,20)
+results <- matrix(nrow=length(ntree_vals), ncol=length(mtry_vals))
+for(i in 1:length(ntree_vals)) {
+  for(n in 1:length(mtry_vals)) {
+    modelFit <- randomForest(classe~., data=training, ntree=ntree_vals[i], mtry=mtry_vals[n])
+    results[i, n] <- mean(predict(modelFit,cross_val) == cross_val$classe)
+  }
+}
+results
+
+```
+
+####Train models
+The model is fit using Random Forests, from the parameter selection performed in the previous step we see that 500 for ntrees and 10 for mtry variables gives the optimal accuracy. However 100 trees and 10 features per tree was found to be be the best balance between performance and accuracy.
+
+Given the selected features the pridicted OOB error rate is approximately 0.55%.
+
+```{r}
+modelFit <- randomForest(classe~., data=training, ntree=500, mtry=10)
 modelFit
 ```
 
 ####Test model
+We can now test the model using the test case, this data has not been used through the model and parameter selection steps to ensure we are not overfitting the data. 
+
 ```{r}
 pred <- predict(modelFit,testing); 
 testing$correct <- pred==testing$classe
 table(pred,testing$classe)
-
+mean(testing$correct <- pred==testing$classe)
 ```
 
+####Final result
+The prediction accuracy of the final model was > 99.2%. This is a very positive result with an actual OOB error rate of 0.66%, marginally higher than the expected value of 0.55% but well within acceptible margins.  
+
+**note** The error rate could be greatly reduced by reintroducing the user and time based features however this would reduce the ability for the solution to generalize well. 
+
 ####Predict test data
+The final requirement of the assignment is to predict on a test set for submission to the Coursera site. This was completed (and passed 100%) with the function below. 
+
 ```{r}
 answers <- predict(modelFit,prediction_input); 
 pml_write_files = function(x){
