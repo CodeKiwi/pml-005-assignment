@@ -18,26 +18,24 @@ For this project we will use the **caret** package, this package smoothes over s
 
 ```{r}
 library(caret)
-library(kernlab)
 library(randomForest)
 ```
 
 ####Load data
 ```{r}
 # For local
-setwd("~/Documents/Projects/pml-005-assignment")
-input <- read.csv("pml-training.csv")
-prediction_input <- read.csv("pml-testing.csv") 
-
+#setwd("~/Documents/Projects/pml-005-assignment")
+#input <- read.csv("pml-training.csv")
+#prediction_input <- read.csv("pml-testing.csv") 
 set.seed(43)
 
 # For submission
-#input <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
-#prediction_input <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+input <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+prediction_input <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
 ```
 
 ####Create training and test sets
-Split into training, test and cross validation data sets. It was decided not to use K-Fold cross validation as this was decided to be overkill for the assignment. Using an 80% split yeilds 12k test cases with approx 3.5k samples in test and cross validation sets.
+Split into training, test and cross validation data sets. It was decided not to use K-Fold cross validation as this was decided to be overkill for the assignment. Using an an approximate 60,20,20 split, this yeilds 12k test cases with approx 3.5k samples in test and cross validation sets.
 
 ```{r}
 inTrain <- createDataPartition(y=input$classe, p=0.8, list=FALSE)
@@ -59,13 +57,9 @@ Remove features with low variance and significant NA values
 # Remove timeseries columns, these facilitated zero test error but would cause failure to generalize
 invalidColumns <- c(1,2,3,4,5,6,7)
 training <- training[-invalidColumns]
-cross_val <- cross_val[-invalidColumns]
-prediction_input <- prediction_input[-invalidColumns]
   
 # Replace Divide by zero errors and empty cells with NA
 training[training == "#DIV/0!" | training == ""] <- NA
-cross_val[cross_val == "#DIV/0!" | cross_val == ""] <- NA
-prediction_input[prediction_input == "#DIV/0!" | prediction_input == ""] <- NA
 
 # Remove features with greater than 10k NA's 
 manyNa <- c()
@@ -73,8 +67,6 @@ for (i in 1:ncol(training)){
  if (sum(is.na(training[i])) > 10000){ manyNa <- c(manyNa, i)}
 }
 training <- training[-manyNa]
-cross_val <- cross_val[-manyNa]
-prediction_input <- prediction_input[-manyNa]
 
 #Check sizes of sets
 dim(training); dim(cross_val); dim(testing)
@@ -83,12 +75,14 @@ dim(training); dim(cross_val); dim(testing)
 ####Select model parameters
 Using the cross validation set train classifiers using a number of different values for ntree and mtry parameters. 
 
-**note* the randomForests library was used in place of the caret wrapper due to the ability to natively modify the ntree and mtry parameters. 
+**note* The randomForests library was used in place of the caret wrapper due to the ability to natively modify the ntree and mtry parameters. 
 
 ```{r}
 ntree_vals <- c(10,100,500)
 mtry_vals <- c(5,10,20)
-results <- matrix(nrow=length(ntree_vals), ncol=length(mtry_vals))
+results <- matrix(nrow=length(ntree_vals), ncol=length(mtry_vals)); 
+rownames(results) <- ntree_vals; 
+colnames(results) <- mtry_vals;
 for(i in 1:length(ntree_vals)) {
   for(n in 1:length(mtry_vals)) {
     modelFit <- randomForest(classe~., data=training, ntree=ntree_vals[i], mtry=mtry_vals[n])
@@ -102,11 +96,17 @@ results
 ####Train models
 The model is fit using Random Forests, from the parameter selection performed in the previous step we see that 500 for ntrees and 10 for mtry variables gives the optimal accuracy. However 100 trees and 10 features per tree was found to be be the best balance between performance and accuracy.
 
-Given the selected features the pridicted OOB error rate is approximately 0.55%.
+Given the selected parameters of 500 ntree and 10 mtry the pridicted out of sample error rate is approximately 0.58%. The cross validation actual out of sample error rates is 0.7%
 
 ```{r}
 modelFit <- randomForest(classe~., data=training, ntree=500, mtry=10)
 modelFit
+
+pred_cross_val <- predict(modelFit,cross_val);
+cross_val$correct <- pred_cross_val==cross_val$classe
+cross_val_error <- mean(cross_val$correct <- pred_cross_val==cross_val$classe) 
+cross_val_error
+
 ```
 
 ####Test model
@@ -120,12 +120,19 @@ mean(testing$correct <- pred==testing$classe)
 ```
 
 ####Final result
-The prediction accuracy of the final model was > 99.2%. This is a very positive result with an actual OOB error rate of 0.66%, marginally higher than the expected value of 0.55% but well within acceptible margins.  
+The prediction accuracy of the final model was > 99.2%. This is a very positive result with an actual OOB error rate of 0.76%, marginally higher than the expected value of 0.58% but well within acceptible margins.  
 
-**note** The error rate could be greatly reduced by reintroducing the user and time based features however this would reduce the ability for the solution to generalize well. 
+**note** The error rate could be greatly reduced by reintroducing the user and time based features however this would reduce the ability for the solution to generalize well.
+
+As you can see from the model plot, the model stabalizes at 100 trees so this parameter can safely be reduced to 100.
+
+
+```{r}
+plot(modelFit)
+```
 
 ####Predict test data
-The final requirement of the assignment is to predict on a test set for submission to the Coursera site. This was completed (and passed 100%) with the function below. 
+The final requirement of the assignment is to predict on a test set for submission to the Coursera site. This was completed (and passed 100%) with the function below. With the answers printed for reference.
 
 ```{r}
 answers <- predict(modelFit,prediction_input); 
@@ -137,6 +144,7 @@ pml_write_files = function(x){
   }
 }
 pml_write_files(answers)
+answers
 ```
 
 
