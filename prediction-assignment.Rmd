@@ -31,7 +31,7 @@ set.seed(43)
 
 # For submission
 input <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
-prediction_input <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+prediction_input <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
 ```
 
 ####Create training and test sets
